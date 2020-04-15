@@ -3,6 +3,7 @@ package ifAddr
 import (
 	"github.com/wangtuanjie/ip17mon"
 	"net"
+	"os"
 )
 
 func IsPublicIP(ip string) bool {
@@ -76,4 +77,29 @@ func (addr IfAddrInfo) IsOuterIP() bool {
 		return IsPublicIP(addr.LocalIfAddr.IPv4)
 	}
 	return IsPublicIP(addr.IP)
+}
+
+type Line struct{
+	IfName string
+	PublicIP string
+	ISP     NetIsp
+}
+
+type HostLines struct {
+	Hostname string
+	Location int
+	ISP 	NetIsp
+	Infos []Line
+}
+
+func ParseLines(ifs []IfAddrInfo)(hostLine HostLines){
+	hostLine.Hostname, _ = os.Hostname()
+	if len(ifs) == 1{
+		if ifs[0].PublicIP.Mainland(){
+			hostLine.Location = 1
+		}else{
+			hostLine.Location = 2
+		}
+	}
+	return
 }
