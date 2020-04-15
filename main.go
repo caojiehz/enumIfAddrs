@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,7 @@ func main() {
 
 	var ifAddrs []ifAddr.LocalIfAddr
 	for i := 0; i < len(netInterfaces); i++ {
-		if (netInterfaces[i].Flags & net.FlagUp) == 0 {
+		if (netInterfaces[i].Flags & net.FlagUp) == 0 || strings.Contains(netInterfaces[i].Name, "docker"){
 			continue
 		}
 
