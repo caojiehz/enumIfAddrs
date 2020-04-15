@@ -1,57 +1,28 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/astaxie/beego/httplib"
-	"github.com/wangtuanjie/ip17mon"
+	"github.com/caojiehz/enumIfAddrs/ifAddr"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
 const (
-	PublicIPURL = "http://127.0.0.1:6001/smartip"
+	PublicIPURL = "http://149.28.31.219:6001/smartip"
 )
-
-type IfAddr struct {
-	IfName string
-	MTU    int
-	IPv4   string
-}
-
-type SmartIP struct {
-	IP string
-	ip17mon.LocationInfo
-}
-
-type IfAddrPublic struct {
-	IfAddr
-	SmartIP
-}
-
-func (addr IfAddrPublic)InnerIP()string{
-	return addr.IPv4
-}
-
-func (addr IfAddrPublic)OuterIP()string{
-	return addr.IP
-}
-
-func (addr IfAddrPublic)IsOuterIP()bool{
-	if addr.IP == ""{
-		return false
-	}
-	return addr.IPv4 == addr.IP
-}
 
 func main() {
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Printf("net.Interfaces failed: %s", err.Error())
+		fmt.Printf("net.Interfaces error: %s\n", err.Error())
 		return
 	}
 
-	var ifAddrs []IfAddr
+	var ifAddrs []ifAddr.LocalIfAddr
 	for i := 0; i < len(netInterfaces); i++ {
 		if (netInterfaces[i].Flags & net.FlagUp) == 0 {
 			continue
@@ -61,7 +32,7 @@ func main() {
 		for _, address := range addrs {
 			if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 				if ipnet.IP.To4() != nil {
-					var addr IfAddr
+					var addr ifAddr.LocalIfAddr
 					addr.IfName = netInterfaces[i].Name
 					addr.MTU = netInterfaces[i].MTU
 					addr.IPv4 = ipnet.IP.String()
@@ -72,11 +43,11 @@ func main() {
 
 	}
 
-	get_public_ip := func(local string) string {
+	get_public_ip := func(local ifAddr.LocalIfAddr) (publicIP ifAddr.PublicIP, err error ){
 		transport := &http.Transport{
 			Dial: func(netw, addr string) (net.Conn, error) {
 				//本地地址  ipaddr是本地外网IP
-				lAddr, err := net.ResolveTCPAddr(netw, local+":0")
+				lAddr, err := net.ResolveTCPAddr(netw, local.IPv4+":0")
 				if err != nil {
 					return nil, err
 				}
@@ -95,13 +66,33 @@ func main() {
 			}}
 
 		req := httplib.Get(PublicIPURL).SetTransport(transport)
-		str, err := req.String()
+		HostName, _ := os.Hostname()
+		req.Header("HostName", HostName)
+		req.Header("IfName", local.IfName)
+		req.Header("IfAddr", local.IPv4)
+
+		body, err := req.String()
 		if err != nil {
-			fmt.Println(err)
+			//fmt.Printf("get %s error: %s\n", PublicIPURL, err.Error())
+			return
 		}
-		return str
+
+		err = json.Unmarshal([]byte(body), &publicIP)
+		if err != nil{
+			fmt.Printf("unmarshal %s error: %s\n", body, err.Error())
+			return
+		}
+		return
 	}
+
+	var addrs []ifAddr.IfAddrInfo
 	for _, item := range ifAddrs {
-		fmt.Printf("%+v, public: %s\n", item, get_public_ip(item.IPv4))
+		var addr ifAddr.IfAddrInfo
+		addr.LocalIfAddr = item
+		addr.PublicIP, err = get_public_ip(item)
+		if err == nil{
+			addrs = append(addrs, addr)
+			fmt.Printf("%v\n", addr)
+		}
 	}
 }
